@@ -1,0 +1,3 @@
+obj-m := wr41th.o
+wr41th-y := mod.o dev.o tgt.o hook.o ptrace.o proc.o brk.o
+ccflags-y += -I$(src)/../core
