@@ -28,21 +28,32 @@ dev_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 
 	switch (cmd) {
 	case WR_IOC_ATTACH:
-		return tgt_add(req.pid, req.feats);
+		wr_info("ioctl attach pid=%d feats=0x%x\n", req.pid, req.feats);
+		err = tgt_add(req.pid, req.feats);
+		break;
 	case WR_IOC_DETACH:
-		return tgt_del(req.pid);
+		wr_info("ioctl detach pid=%d\n", req.pid);
+		err = tgt_del(req.pid);
+		break;
 	case WR_IOC_SET:
-		return tgt_set(req.pid, req.feats);
+		wr_info("ioctl set pid=%d feats=0x%x\n", req.pid, req.feats);
+		err = tgt_set(req.pid, req.feats);
+		break;
 	case WR_IOC_GET:
 		err = tgt_get(req.pid, &req.feats);
+		wr_dbg("ioctl get pid=%d err=%d feats=0x%x\n", req.pid, err, req.feats);
 		if (err)
 			return err;
 		if (copy_to_user((void __user *)arg, &req, sizeof(req)))
 			return -EFAULT;
 		return 0;
 	default:
+		wr_warn("ioctl unknown 0x%x\n", cmd);
 		return -ENOTTY;
 	}
+	if (err)
+		wr_warn("ioctl pid=%d err=%d\n", req.pid, err);
+	return err;
 }
 
 static const struct file_operations wr_fops = {

@@ -78,6 +78,7 @@ tgt_add(pid_t pid, u32 feats)
 	mm = task ? get_task_mm(task) : NULL;
 	rcu_read_unlock();
 	if (!task || !mm) {
+		wr_warn("tgt add pid=%d no task/mm\n", pid);
 		if (task)
 			put_task_struct(task);
 		if (mm)
@@ -103,13 +104,18 @@ tgt_add(pid_t pid, u32 feats)
 			t->mm = NULL;
 		}
 		mutex_unlock(&lock);
+		wr_info("tgt upd pid=%d comm=%s feats=0x%x\n", pid, task->comm, feats);
 		tgt_free(t);
 		return 0;
 	}
 	err = xa_err(xa_store(&tgts, (unsigned long)pid, t, GFP_KERNEL));
 	mutex_unlock(&lock);
-	if (err)
+	if (err) {
+		wr_warn("tgt store pid=%d err=%d\n", pid, err);
 		tgt_free(t);
+	} else {
+		wr_info("tgt add pid=%d comm=%s feats=0x%x\n", pid, task->comm, feats);
+	}
 	return err;
 }
 
@@ -123,6 +129,8 @@ tgt_del(pid_t pid)
 	mutex_unlock(&lock);
 	if (!t)
 		return -ESRCH;
+	wr_info("tgt del pid=%d comm=%s feats=0x%x\n", pid,
+		t->task ? t->task->comm : "?", t->feats);
 	tgt_free(t);
 	return 0;
 }
@@ -140,6 +148,8 @@ tgt_set(pid_t pid, u32 feats)
 	else
 		t->feats = feats;
 	mutex_unlock(&lock);
+	if (!err)
+		wr_info("tgt set pid=%d feats=0x%x\n", pid, feats);
 	return err;
 }
 
@@ -228,6 +238,10 @@ tgt_bp_set(pid_t pid, unsigned long addr, u8 orig)
 		t->bps[slot].addr = addr;
 		t->bps[slot].orig = orig;
 		t->bps[slot].used = 1;
+		wr_info("bp set pid=%d addr=0x%lx orig=0x%02x slot=%d\n",
+			pid, addr, orig, slot);
+	} else {
+		wr_warn("bp full pid=%d addr=0x%lx\n", pid, addr);
 	}
 out:
 	mutex_unlock(&lock);
@@ -272,6 +286,8 @@ tgt_fini(void)
 	mutex_lock(&lock);
 	xa_for_each(&tgts, idx, t)
 	{
+		wr_info("tgt drop pid=%lu comm=%s feats=0x%x\n", idx,
+			t->task ? t->task->comm : "?", t->feats);
 		xa_erase(&tgts, idx);
 		tgt_free(t);
 	}

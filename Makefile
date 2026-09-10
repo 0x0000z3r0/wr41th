@@ -1,12 +1,12 @@
 DEST := build
 KDIR ?= $(firstword $(wildcard /lib/modules/*/build))
 
-.PHONY: all kmod r2 core demo in-all in-kmod in-core in-r2 in-demo
+.PHONY: all kmod r2 core demo util in-all in-kmod in-core in-r2 in-demo in-util
 
-all kmod r2 core demo:
+all kmod r2 core demo util:
 	@./docker/run.sh $@
 
-in-all: in-kmod in-core in-r2 in-demo
+in-all: in-kmod in-core in-r2 in-demo in-util
 
 in-demo:
 	$(MAKE) -C demo DEST=$(CURDIR)/$(DEST)/demo
@@ -15,6 +15,10 @@ in-core:
 	mkdir -p $(DEST)/core
 	gcc -c -Icore -O2 -Wall -Wextra -fPIC core/io.c -o $(DEST)/core/io.o
 	ar rcs $(DEST)/core/libwr.a $(DEST)/core/io.o
+
+in-util: in-core
+	mkdir -p $(DEST)/util
+	gcc -Icore -O2 -Wall -Wextra -o $(DEST)/util/wr41th util/main.c $(DEST)/core/io.o
 
 in-kmod:
 	@if [ -z "$(KDIR)" ] || [ ! -d "$(KDIR)" ]; then echo "kmod: no KDIR"; exit 1; fi

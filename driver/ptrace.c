@@ -36,6 +36,9 @@ pt_ent(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs, v
 	else if ((req == PTRACE_ATTACH || req == PTRACE_SEIZE) &&
 		 (tid == task_tgid_nr(current) || tid == task_pid_nr(current)))
 		s->fake = 1;
+	if (s->fake)
+		wr_dbg("ptrace hide pid=%d req=%ld tid=%ld\n",
+		       task_tgid_nr(current), req, tid);
 
 done:
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
@@ -50,8 +53,10 @@ pt_ex(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs, vo
 
 	if (!s || !s->fake)
 		return;
-	if ((long)hook_ret(regs) == -EPERM)
+	if ((long)hook_ret(regs) == -EPERM) {
+		wr_dbg("ptrace fake 0 pid=%d\n", task_tgid_nr(current));
 		hook_set_ret(regs, 0);
+	}
 }
 
 static struct fprobe pt_fp = {
@@ -69,6 +74,7 @@ ptrace_init(void)
 
 	err = hook_reg(&pt_fp, "__x64_sys_ptrace");
 	pt_on = !err;
+	wr_info("ptrace hook=%d\n", pt_on);
 	return 0;
 }
 

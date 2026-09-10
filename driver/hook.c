@@ -1,3 +1,4 @@
+#include "drv.h"
 #include "hook.h"
 
 #include <linux/ftrace.h>
@@ -11,7 +12,9 @@ hook_reg(struct fprobe *fp, const char *pat)
 
 	err = register_fprobe(fp, pat, NULL);
 	if (err)
-		pr_warn("wr41th: fprobe %s failed (%d)\n", pat, err);
+		wr_warn("hook %s fail %d\n", pat, err);
+	else
+		wr_info("hook %s ok\n", pat);
 	return err;
 }
 

