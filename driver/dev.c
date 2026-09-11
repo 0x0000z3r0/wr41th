@@ -4,6 +4,7 @@
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
 #include <linux/module.h>
+#include <linux/slab.h>
 #include <linux/uaccess.h>
 
 static int
@@ -23,6 +24,19 @@ dev_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	err = dev_ok();
 	if (err)
 		return err;
+	if (cmd == WR_IOC_LIST) {
+		struct wr_list *lst;
+		int ret;
+
+		lst = kzalloc(sizeof(*lst), GFP_KERNEL);
+		if (!lst)
+			return -ENOMEM;
+		ret = tgt_list(lst->ents, WR_LIST_MAX, &lst->n);
+		if (!ret && copy_to_user((void __user *)arg, lst, sizeof(*lst)))
+			ret = -EFAULT;
+		kfree(lst);
+		return ret;
+	}
 	if (copy_from_user(&req, (void __user *)arg, sizeof(req)))
 		return -EFAULT;
 

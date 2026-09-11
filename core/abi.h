@@ -29,9 +29,18 @@ struct wr_req {
 	__u32 feats;
 };
 
+#define WR_LIST_MAX 256
+
+struct wr_list {
+	__u32 n;
+	__u32 pad;
+	struct wr_req ents[WR_LIST_MAX];
+};
+
 #define WR_IOC_ATTACH _IOW(WR_IOC_MAGIC, 1, struct wr_req)
 #define WR_IOC_DETACH _IOW(WR_IOC_MAGIC, 2, struct wr_req)
 #define WR_IOC_SET _IOW(WR_IOC_MAGIC, 3, struct wr_req)
 #define WR_IOC_GET _IOWR(WR_IOC_MAGIC, 4, struct wr_req)
+#define WR_IOC_LIST _IOR(WR_IOC_MAGIC, 5, struct wr_list)
 
 #endif

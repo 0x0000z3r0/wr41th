@@ -119,11 +119,28 @@ tgt_add(pid_t pid, u32 feats)
 	return err;
 }
 
+static void
+tgt_drop_all(void)
+{
+	unsigned long idx;
+	struct wr_tgt *t;
+
+	xa_for_each(&tgts, idx, t)
+	{
+		wr_info("tgt drop pid=%lu comm=%s feats=0x%x\n", idx,
+			t->task ? t->task->comm : "?", t->feats);
+		xa_erase(&tgts, idx);
+		tgt_free(t);
+	}
+}
+
 int
 tgt_del(pid_t pid)
 {
 	struct wr_tgt *t;
 
+	if (pid == 0)
+		return tgt_clear();
 	mutex_lock(&lock);
 	t = xa_erase(&tgts, (unsigned long)pid);
 	mutex_unlock(&lock);
@@ -132,6 +149,16 @@ tgt_del(pid_t pid)
 	wr_info("tgt del pid=%d comm=%s feats=0x%x\n", pid,
 		t->task ? t->task->comm : "?", t->feats);
 	tgt_free(t);
+	return 0;
+}
+
+int
+tgt_clear(void)
+{
+	mutex_lock(&lock);
+	tgt_drop_all();
+	mutex_unlock(&lock);
+	wr_info("tgt clear\n");
 	return 0;
 }
 
@@ -167,6 +194,32 @@ tgt_get(pid_t pid, u32 *feats)
 		*feats = t->feats;
 	mutex_unlock(&lock);
 	return err;
+}
+
+int
+tgt_list(struct wr_req *ents, u32 max, u32 *n)
+{
+	unsigned long idx;
+	struct wr_tgt *t;
+	u32 i = 0;
+
+	if (!n)
+		return -EINVAL;
+	mutex_lock(&lock);
+	xa_for_each(&tgts, idx, t)
+	{
+		if (i >= max)
+			break;
+		if (ents) {
+			ents[i].pid = (__s32)idx;
+			ents[i].feats = t->feats;
+		}
+		i++;
+	}
+	mutex_unlock(&lock);
+	*n = i;
+	wr_dbg("tgt list n=%u\n", i);
+	return 0;
 }
 
 bool
@@ -280,17 +333,6 @@ tgt_init(void)
 void
 tgt_fini(void)
 {
-	unsigned long idx;
-	struct wr_tgt *t;
-
-	mutex_lock(&lock);
-	xa_for_each(&tgts, idx, t)
-	{
-		wr_info("tgt drop pid=%lu comm=%s feats=0x%x\n", idx,
-			t->task ? t->task->comm : "?", t->feats);
-		xa_erase(&tgts, idx);
-		tgt_free(t);
-	}
-	mutex_unlock(&lock);
+	tgt_clear();
 	xa_destroy(&tgts);
 }

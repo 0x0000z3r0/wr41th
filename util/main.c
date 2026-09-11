@@ -45,10 +45,11 @@ static void
 usage(FILE *out)
 {
 	fprintf(out, "usage: wr41th add  <pid> <feat...>\n");
-	fprintf(out, "       wr41th del  <pid>\n");
+	fprintf(out, "       wr41th del  <pid>|all\n");
 	fprintf(out, "       wr41th set  <pid> <feat...>\n");
 	fprintf(out, "       wr41th feat <pid> <name> <on|off>\n");
 	fprintf(out, "       wr41th stat <pid>\n");
+	fprintf(out, "       wr41th ls\n");
 	fprintf(out, "feats: ptrace proc brk hw maps ppid time\n");
 }
 
@@ -137,6 +138,22 @@ cmd_del(pid_t pid)
 }
 
 static int
+cmd_del_all(void)
+{
+	int fd = open_dev();
+
+	if (fd < 0)
+		return 1;
+	if (wr_detach(fd, 0) < 0) {
+		close(fd);
+		return die_ioctl("del", 0);
+	}
+	printf("emptied the target list\n");
+	close(fd);
+	return 0;
+}
+
+static int
 cmd_set(pid_t pid, uint32_t mask)
 {
 	int fd = open_dev();
@@ -193,6 +210,32 @@ cmd_feat(pid_t pid, const char *name, const char *onoff)
 }
 
 static int
+cmd_ls(void)
+{
+	struct wr_list lst;
+	unsigned int i;
+	int fd = open_dev();
+
+	if (fd < 0)
+		return 1;
+	if (wr_list(fd, &lst) < 0) {
+		fprintf(stderr, "wr41th: ls failed\n");
+		close(fd);
+		return 1;
+	}
+	close(fd);
+	if (!lst.n) {
+		printf("none\n");
+		return 0;
+	}
+	for (i = 0; i < lst.n && i < WR_LIST_MAX; i++) {
+		printf("pid %d ", lst.ents[i].pid);
+		print_feats(lst.ents[i].feats);
+	}
+	return 0;
+}
+
+static int
 cmd_stat(pid_t pid)
 {
 	uint32_t feats;
@@ -221,6 +264,15 @@ main(int argc, char **argv)
 		return argc < 2 ? 1 : 0;
 	}
 	cmd = argv[1];
+	if (!strcmp(cmd, "ls") || !strcmp(cmd, "list")) {
+		if (argc != 2) {
+			usage(stderr);
+			return 1;
+		}
+		return cmd_ls();
+	}
+	if (!strcmp(cmd, "del") && argc == 3 && !strcmp(argv[2], "all"))
+		return cmd_del_all();
 	if (argc < 3 || parse_pid(argv[2], &pid) < 0) {
 		usage(stderr);
 		return 1;

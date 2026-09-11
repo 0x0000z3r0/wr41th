@@ -10,5 +10,6 @@ int wr_attach(int fd, pid_t pid, uint32_t feats);
 int wr_detach(int fd, pid_t pid);
 int wr_set(int fd, pid_t pid, uint32_t feats);
 int wr_get(int fd, pid_t pid, uint32_t *feats);
+int wr_list(int fd, struct wr_list *out);
 
 #endif
