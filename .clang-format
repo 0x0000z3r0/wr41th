@@ -10,3 +10,4 @@ ColumnLimit: 0
 AlignTrailingComments: true
 SpacesBeforeTrailingComments: 2
 AlwaysBreakAfterDefinitionReturnType: All
+InsertBraces: true

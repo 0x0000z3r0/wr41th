@@ -1,5 +1,5 @@
-#include "drv.h"
 #include "hook.h"
+#include "drv.h"
 
 #include <linux/ftrace.h>
 #include <linux/printk.h>
@@ -11,10 +11,11 @@ hook_reg(struct fprobe *fp, const char *pat)
 	int err;
 
 	err = register_fprobe(fp, pat, NULL);
-	if (err)
+	if (err) {
 		wr_warn("hook %s fail %d\n", pat, err);
-	else
+	} else {
 		wr_info("hook %s ok\n", pat);
+	}
 	return err;
 }
 

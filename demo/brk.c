@@ -14,8 +14,8 @@ int
 main(void)
 {
 	unsigned char buf[16];
-	struct iovec loc = { .iov_base = buf, .iov_len = sizeof(buf) };
-	struct iovec rem = { .iov_base = (void *)mark, .iov_len = sizeof(buf) };
+	struct iovec loc = {.iov_base = buf, .iov_len = sizeof(buf)};
+	struct iovec rem = {.iov_base = (void *)mark, .iov_len = sizeof(buf)};
 
 	if (process_vm_readv(getpid(), &loc, 1, &rem, 1, 0) != (ssize_t)sizeof(buf)) {
 		return fail("process_vm_readv");

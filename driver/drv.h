@@ -10,9 +10,9 @@ extern int wr_debug;
 
 #define wr_info(fmt, ...) pr_info("wr41th: " fmt, ##__VA_ARGS__)
 #define wr_warn(fmt, ...) pr_warn("wr41th: " fmt, ##__VA_ARGS__)
-#define wr_dbg(fmt, ...)                  \
-	do {                              \
-		if (wr_debug)             \
+#define wr_dbg(fmt, ...)                                        \
+	do {                                                    \
+		if (wr_debug)                                   \
 			pr_info("wr41th: " fmt, ##__VA_ARGS__); \
 	} while (0)
 

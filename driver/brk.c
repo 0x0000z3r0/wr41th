@@ -1,10 +1,12 @@
 #include "drv.h"
 #include "hook.h"
 
+#include <linux/hardirq.h>
 #include <linux/highmem.h>
 #include <linux/mm.h>
 #include <linux/mmap_lock.h>
 #include <linux/percpu.h>
+#include <linux/preempt.h>
 #include <linux/ptrace.h>
 #include <linux/sched.h>
 #include <linux/string.h>
@@ -33,8 +35,9 @@ peek_byte(struct mm_struct *mm, unsigned long addr)
 	long n;
 	int *busy = this_cpu_ptr(&wr_busy);
 
-	if (*busy)
+	if (*busy || in_atomic() || irqs_disabled()) {
 		return 0;
+	}
 	(*busy)++;
 	mmap_read_lock(mm);
 	n = get_user_pages_remote(mm, addr, 1, FOLL_FORCE, &page, NULL);
@@ -55,13 +58,19 @@ note_write(struct mm_struct *mm, unsigned long addr, const u8 *buf, int len)
 	pid_t pid;
 	int i;
 
-	if (!tgt_mm(mm, WR_FEAT_BRK, &pid))
+	if (!tgt_mm(mm, WR_FEAT_BRK, &pid)) {
 		return;
+	}
 	for (i = 0; i < len; i++) {
-		if (buf[i] != WR_INT3)
+		if (buf[i] != WR_INT3) {
 			continue;
-		if (tgt_bp_get(pid, addr + i, NULL))
+		}
+		if (tgt_bp_get(pid, addr + i, NULL)) {
 			continue;
+		}
+		if (in_atomic() || irqs_disabled()) {
+			continue;
+		}
 		tgt_bp_set(pid, addr + i, peek_byte(mm, addr + i));
 	}
 }
@@ -73,8 +82,9 @@ hide_read(u8 *p, int len, unsigned long addr, pid_t pid)
 	int i;
 
 	for (i = 0; i < len; i++) {
-		if (p[i] != WR_INT3)
+		if (p[i] != WR_INT3) {
 			continue;
+		}
 		if (tgt_bp_get(pid, addr + i, &orig)) {
 			wr_dbg("bp hide pid=%d addr=0x%lx orig=0x%02x\n",
 			       pid, addr + i, orig);
@@ -91,8 +101,9 @@ scan_write(struct vm_stash *s)
 
 	while (off < s->len) {
 		n = s->len - off;
-		if (n > WR_CHUNK)
+		if (n > WR_CHUNK) {
 			n = WR_CHUNK;
+		}
 		memcpy(tmp, (u8 *)s->buf + off, n);
 		note_write(s->mm, s->addr + off, tmp, n);
 		off += n;
@@ -110,12 +121,14 @@ fill_stash(struct vm_stash *s, struct mm_struct *mm, unsigned long addr, void *b
 	s->hide = 0;
 	s->pid = 0;
 
-	if (*this_cpu_ptr(&wr_busy) || !mm || len <= 0)
+	if (*this_cpu_ptr(&wr_busy) || !mm || len <= 0) {
 		return;
-	if (flags & FOLL_WRITE)
+	}
+	if (flags & FOLL_WRITE) {
 		scan_write(s);
-	else if (tgt_task(current, WR_FEAT_BRK) && tgt_mm(mm, WR_FEAT_BRK, &s->pid))
+	} else if (tgt_task(current, WR_FEAT_BRK) && tgt_mm(mm, WR_FEAT_BRK, &s->pid)) {
 		s->hide = 1;
+	}
 }
 
 static WR_FENTRY
@@ -155,16 +168,19 @@ vm_ex(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs, vo
 	u8 tmp[WR_CHUNK];
 	int got, off, n;
 
-	if (!s->hide || s->pid <= 0)
+	if (!s->hide || s->pid <= 0) {
 		return;
+	}
 	got = (int)hook_ret(regs);
-	if (got <= 0)
+	if (got <= 0) {
 		return;
+	}
 	off = 0;
 	while (off < got) {
 		n = got - off;
-		if (n > WR_CHUNK)
+		if (n > WR_CHUNK) {
 			n = WR_CHUNK;
+		}
 		memcpy(tmp, (u8 *)s->buf + off, n);
 		hide_read(tmp, n, s->addr + off, s->pid);
 		memcpy((u8 *)s->buf + off, tmp, n);
@@ -191,8 +207,9 @@ int
 brk_init(void)
 {
 	vm_on = !hook_reg(&vm_fp, "__access_remote_vm");
-	if (!vm_on)
+	if (!vm_on) {
 		vm_on = !hook_reg(&vm_fp, "access_remote_vm");
+	}
 	ptvm_on = !hook_reg(&ptvm_fp, "ptrace_access_vm");
 	wr_info("brk vm=%d ptvm=%d\n", vm_on, ptvm_on);
 	return 0;
@@ -201,10 +218,12 @@ brk_init(void)
 void
 brk_fini(void)
 {
-	if (vm_on)
+	if (vm_on) {
 		hook_unreg(&vm_fp);
-	if (ptvm_on)
+	}
+	if (ptvm_on) {
 		hook_unreg(&ptvm_fp);
+	}
 	vm_on = false;
 	ptvm_on = false;
 }

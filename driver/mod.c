@@ -13,23 +13,29 @@ wr_init(void)
 	int err;
 
 	err = tgt_init();
-	if (err)
+	if (err) {
 		return err;
+	}
 	err = hook_init();
-	if (err)
+	if (err) {
 		goto e_tgt;
+	}
 	err = ptrace_init();
-	if (err)
+	if (err) {
 		goto e_hook;
+	}
 	err = proc_init();
-	if (err)
+	if (err) {
 		goto e_ptrace;
+	}
 	err = brk_init();
-	if (err)
+	if (err) {
 		goto e_proc;
+	}
 	err = dev_init();
-	if (err)
+	if (err) {
 		goto e_brk;
+	}
 	wr_info("loaded debug=%d\n", wr_debug);
 	return 0;
 

@@ -2,40 +2,59 @@
 #include "hook.h"
 
 #include <linux/sched.h>
+#include <linux/seq_file.h>
+#include <linux/string.h>
+
+#define WR_TPID "TracerPid:"
 
 struct proc_stash {
-	struct task_struct *task;
-	unsigned long ptrace;
+	struct seq_file *m;
 };
 
 static void
-proc_hide(struct proc_stash *s, struct task_struct *task)
+proc_fix(struct seq_file *m)
 {
-	s->task = NULL;
-	if (!task)
-		return;
-	if (!tgt_task(task, WR_FEAT_PROC) && !tgt_task(current, WR_FEAT_PROC))
-		return;
-	s->task = task;
-	s->ptrace = task->ptrace;
-	wr_dbg("proc hide pid=%d comm=%s ptrace=0x%lx by=%d\n",
-	       task_tgid_nr(task), task->comm, s->ptrace, task_tgid_nr(current));
-	task->ptrace = 0;
-}
+	char *p, *e, *nl;
 
-static void
-proc_show(struct proc_stash *s)
-{
-	if (s->task) {
-		s->task->ptrace = s->ptrace;
-		s->task = NULL;
+	if (!m || !m->buf || !m->count || m->count > m->size) {
+		return;
 	}
+	if (seq_has_overflowed(m)) {
+		return;
+	}
+	p = strnstr(m->buf, WR_TPID, m->count);
+	if (!p) {
+		return;
+	}
+	p += sizeof(WR_TPID) - 1;
+	e = m->buf + m->count;
+	while (p < e && (*p == ' ' || *p == '\t')) {
+		p++;
+	}
+	nl = p;
+	while (nl < e && *nl != '\n') {
+		nl++;
+	}
+	if (nl == p) {
+		return;
+	}
+	*p++ = '0';
+	while (p < nl) {
+		*p++ = ' ';
+	}
+	wr_dbg("proc hide TracerPid\n");
 }
 
 static WR_FENTRY
 proc_ent(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs, void *data)
 {
-	proc_hide(data, (struct task_struct *)hook_arg(regs, 3));
+	struct proc_stash *s = data;
+	struct task_struct *task = (struct task_struct *)hook_arg(regs, 3);
+
+	s->m = NULL;
+	if (task && (tgt_task(task, WR_FEAT_PROC) || tgt_task(current, WR_FEAT_PROC))) {
+		s->m = (struct seq_file *)hook_arg(regs, 0);
+	}
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
 	return 0;
 #endif
@@ -44,7 +63,11 @@ proc_ent(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs,
 static void
 proc_ex(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs, void *data)
 {
-	proc_show(data);
+	struct proc_stash *s = data;
+
+	if (s->m) {
+		proc_fix(s->m);
+	}
 }
 
 static struct fprobe stat_fp = {
@@ -74,10 +97,12 @@ proc_init(void)
 void
 proc_fini(void)
 {
-	if (status_on)
+	if (status_on) {
 		hook_unreg(&status_fp);
-	if (stat_on)
+	}
+	if (stat_on) {
 		hook_unreg(&stat_fp);
+	}
 	status_on = false;
 	stat_on = false;
 }

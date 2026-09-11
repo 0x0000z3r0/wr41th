@@ -16,12 +16,14 @@ pt_ent(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs, v
 	struct pt_stash *s = data;
 
 	s->fake = 0;
-	if (!tgt_task(current, WR_FEAT_PTRACE))
+	if (!tgt_task(current, WR_FEAT_PTRACE)) {
 		goto done;
+	}
 
 	uregs = (struct pt_regs *)hook_arg(regs, 0);
-	if (!uregs)
+	if (!uregs) {
 		goto done;
+	}
 #ifdef CONFIG_X86_64
 	req = (long)uregs->di;
 	tid = (long)uregs->si;
@@ -31,14 +33,16 @@ pt_ent(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs, v
 	tid = 0;
 #endif
 
-	if (req == PTRACE_TRACEME)
+	if (req == PTRACE_TRACEME) {
 		s->fake = 1;
-	else if ((req == PTRACE_ATTACH || req == PTRACE_SEIZE) &&
-		 (tid == task_tgid_nr(current) || tid == task_pid_nr(current)))
+	} else if ((req == PTRACE_ATTACH || req == PTRACE_SEIZE) &&
+		   (tid == task_tgid_nr(current) || tid == task_pid_nr(current))) {
 		s->fake = 1;
-	if (s->fake)
+	}
+	if (s->fake) {
 		wr_dbg("ptrace hide pid=%d req=%ld tid=%ld\n",
 		       task_tgid_nr(current), req, tid);
+	}
 
 done:
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
@@ -51,8 +55,9 @@ pt_ex(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs, vo
 {
 	struct pt_stash *s = data;
 
-	if (!s || !s->fake)
+	if (!s || !s->fake) {
 		return;
+	}
 	if ((long)hook_ret(regs) == -EPERM) {
 		wr_dbg("ptrace fake 0 pid=%d\n", task_tgid_nr(current));
 		hook_set_ret(regs, 0);
@@ -81,7 +86,8 @@ ptrace_init(void)
 void
 ptrace_fini(void)
 {
-	if (pt_on)
+	if (pt_on) {
 		hook_unreg(&pt_fp);
+	}
 	pt_on = false;
 }

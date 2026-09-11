@@ -48,18 +48,21 @@ wr_get(int fd, pid_t pid, uint32_t *feats)
 	req.pid = pid;
 	req.feats = 0;
 	err = ioctl(fd, WR_IOC_GET, &req);
-	if (err)
+	if (err) {
 		return err;
-	if (feats)
+	}
+	if (feats) {
 		*feats = req.feats;
+	}
 	return 0;
 }
 
 int
 wr_list(int fd, struct wr_list *out)
 {
-	if (!out)
+	if (!out) {
 		return -1;
+	}
 	out->n = 0;
 	out->pad = 0;
 	return ioctl(fd, WR_IOC_LIST, out);
