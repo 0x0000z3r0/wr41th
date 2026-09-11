@@ -17,11 +17,12 @@ dev_ok(void)
 }
 
 static long
-dev_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
+dev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	struct wr_req req;
 	int err;
 
+	(void)filp;
 	err = dev_ok();
 	if (err) {
 		return err;

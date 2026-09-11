@@ -8,48 +8,48 @@
 #include <unistd.h>
 
 static uint32_t
-feat_bit(const char *n)
+feat_bit(const char *name)
 {
-	if (!n) {
+	if (!name) {
 		return 0;
 	}
-	if (!strcmp(n, "ptrace")) {
+	if (!strcmp(name, "ptrace")) {
 		return WR_FEAT_PTRACE;
 	}
-	if (!strcmp(n, "proc")) {
+	if (!strcmp(name, "proc")) {
 		return WR_FEAT_PROC;
 	}
-	if (!strcmp(n, "brk")) {
+	if (!strcmp(name, "brk")) {
 		return WR_FEAT_BRK;
 	}
-	if (!strcmp(n, "hw")) {
+	if (!strcmp(name, "hw")) {
 		return WR_FEAT_HW;
 	}
-	if (!strcmp(n, "maps")) {
+	if (!strcmp(name, "maps")) {
 		return WR_FEAT_MAPS;
 	}
-	if (!strcmp(n, "ppid")) {
+	if (!strcmp(name, "ppid")) {
 		return WR_FEAT_PPID;
 	}
-	if (!strcmp(n, "time")) {
+	if (!strcmp(name, "time")) {
 		return WR_FEAT_TIME;
 	}
 	return 0;
 }
 
 static const char *
-feat_names(uint32_t f)
+feat_names(uint32_t feats)
 {
 	static char buf[80];
 
-	snprintf(buf, sizeof(buf), "0x%x%s%s%s%s%s%s%s", f,
-		 (f & WR_FEAT_PTRACE) ? " ptrace" : "",
-		 (f & WR_FEAT_PROC) ? " proc" : "",
-		 (f & WR_FEAT_BRK) ? " brk" : "",
-		 (f & WR_FEAT_HW) ? " hw" : "",
-		 (f & WR_FEAT_MAPS) ? " maps" : "",
-		 (f & WR_FEAT_PPID) ? " ppid" : "",
-		 (f & WR_FEAT_TIME) ? " time" : "");
+	snprintf(buf, sizeof(buf), "0x%x%s%s%s%s%s%s%s", feats,
+		 (feats & WR_FEAT_PTRACE) ? " ptrace" : "",
+		 (feats & WR_FEAT_PROC) ? " proc" : "",
+		 (feats & WR_FEAT_BRK) ? " brk" : "",
+		 (feats & WR_FEAT_HW) ? " hw" : "",
+		 (feats & WR_FEAT_MAPS) ? " maps" : "",
+		 (feats & WR_FEAT_PPID) ? " ppid" : "",
+		 (feats & WR_FEAT_TIME) ? " time" : "");
 	return buf;
 }
 
@@ -66,34 +66,34 @@ usage(FILE *out)
 }
 
 static int
-parse_pid(const char *s, pid_t *pid)
+parse_pid(const char *str, pid_t *pid)
 {
 	char *end;
-	long v;
+	long val;
 
-	if (!s || !*s) {
+	if (!str || !*str) {
 		return -1;
 	}
 	errno = 0;
-	v = strtol(s, &end, 10);
-	if (errno || end == s || *end || v <= 0) {
+	val = strtol(str, &end, 10);
+	if (errno || end == str || *end || val <= 0) {
 		return -1;
 	}
-	*pid = (pid_t)v;
+	*pid = (pid_t)val;
 	return 0;
 }
 
 static int
 parse_feats(char **argv, int argc, uint32_t *mask)
 {
-	int i;
+	int arg;
 	uint32_t bit;
 
 	*mask = 0;
-	for (i = 0; i < argc; i++) {
-		bit = feat_bit(argv[i]);
+	for (arg = 0; arg < argc; arg++) {
+		bit = feat_bit(argv[arg]);
 		if (!bit) {
-			wr_err("unknown feat %s\n", argv[i]);
+			wr_err("unknown feat %s\n", argv[arg]);
 			return -1;
 		}
 		*mask |= bit;
@@ -235,7 +235,7 @@ static int
 cmd_ls(void)
 {
 	struct wr_list lst;
-	unsigned int i;
+	unsigned int idx;
 	int fd = open_dev();
 
 	if (fd < 0) {
@@ -251,8 +251,8 @@ cmd_ls(void)
 		wr_ok("none\n");
 		return 0;
 	}
-	for (i = 0; i < lst.n && i < WR_LIST_MAX; i++) {
-		wr_ok("pid %d feats %s\n", lst.ents[i].pid, feat_names(lst.ents[i].feats));
+	for (idx = 0; idx < lst.n && idx < WR_LIST_MAX; idx++) {
+		wr_ok("pid %d feats %s\n", lst.ents[idx].pid, feat_names(lst.ents[idx].feats));
 	}
 	return 0;
 }

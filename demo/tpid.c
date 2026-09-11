@@ -8,40 +8,35 @@ static int
 tracer(void)
 {
 	char line[256];
-	FILE *f;
+	FILE *status;
 	int pid = -1;
 
-	f = fopen("/proc/self/status", "r");
-	if (!f) {
+	status = fopen("/proc/self/status", "r");
+	if (!status) {
 		return -1;
 	}
-	while (fgets(line, sizeof(line), f)) {
+	while (fgets(line, sizeof(line), status)) {
 		if (strncmp(line, "TracerPid:", 10)) {
 			continue;
 		}
 		sscanf(line + 10, "%d", &pid);
 		break;
 	}
-	fclose(f);
+	fclose(status);
 	return pid;
 }
 
 int
 main(void)
 {
-	int i, pid;
-
 	printf("pid %d\n", getpid());
 	fflush(stdout);
-	for (i = 0; i < 15; i++) {
-		pid = tracer();
-		if (pid < 0) {
-			return fail("no TracerPid field");
-		}
-		if (!pid) {
-			return ok();
-		}
-		sleep(1);
+	int pid = tracer();
+	if (pid < 0) {
+		return fail("no TracerPid field");
+	}
+	if (!pid) {
+		return ok();
 	}
 	return bad("TracerPid");
 }

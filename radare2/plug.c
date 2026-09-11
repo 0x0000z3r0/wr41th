@@ -8,11 +8,11 @@
 #include <unistd.h>
 
 static int
-starts(const char *s, const char *p)
+starts(const char *str, const char *pfx)
 {
-	size_t n = strlen(p);
+	size_t nlen = strlen(pfx);
 
-	return s && !strncmp(s, p, n);
+	return str && !strncmp(str, pfx, nlen);
 }
 
 static pid_t
@@ -25,30 +25,30 @@ dbg_pid(RCore *core)
 }
 
 static uint32_t
-feat_bit(const char *n)
+feat_bit(const char *name)
 {
-	if (!n) {
+	if (!name) {
 		return 0;
 	}
-	if (!strcmp(n, "ptrace")) {
+	if (!strcmp(name, "ptrace")) {
 		return WR_FEAT_PTRACE;
 	}
-	if (!strcmp(n, "proc")) {
+	if (!strcmp(name, "proc")) {
 		return WR_FEAT_PROC;
 	}
-	if (!strcmp(n, "brk")) {
+	if (!strcmp(name, "brk")) {
 		return WR_FEAT_BRK;
 	}
-	if (!strcmp(n, "hw")) {
+	if (!strcmp(name, "hw")) {
 		return WR_FEAT_HW;
 	}
-	if (!strcmp(n, "maps")) {
+	if (!strcmp(name, "maps")) {
 		return WR_FEAT_MAPS;
 	}
-	if (!strcmp(n, "ppid")) {
+	if (!strcmp(name, "ppid")) {
 		return WR_FEAT_PPID;
 	}
-	if (!strcmp(n, "time")) {
+	if (!strcmp(name, "time")) {
 		return WR_FEAT_TIME;
 	}
 	return 0;
@@ -91,16 +91,16 @@ say_err(RCore *core, const char *fmt, ...)
 }
 
 static void
-print_feats(RCore *core, pid_t pid, uint32_t f)
+print_feats(RCore *core, pid_t pid, uint32_t feats)
 {
-	say_ok(core, "pid %d feats 0x%x%s%s%s%s%s%s%s\n", pid, f,
-	       (f & WR_FEAT_PTRACE) ? " ptrace" : "",
-	       (f & WR_FEAT_PROC) ? " proc" : "",
-	       (f & WR_FEAT_BRK) ? " brk" : "",
-	       (f & WR_FEAT_HW) ? " hw" : "",
-	       (f & WR_FEAT_MAPS) ? " maps" : "",
-	       (f & WR_FEAT_PPID) ? " ppid" : "",
-	       (f & WR_FEAT_TIME) ? " time" : "");
+	say_ok(core, "pid %d feats 0x%x%s%s%s%s%s%s%s\n", pid, feats,
+	       (feats & WR_FEAT_PTRACE) ? " ptrace" : "",
+	       (feats & WR_FEAT_PROC) ? " proc" : "",
+	       (feats & WR_FEAT_BRK) ? " brk" : "",
+	       (feats & WR_FEAT_HW) ? " hw" : "",
+	       (feats & WR_FEAT_MAPS) ? " maps" : "",
+	       (feats & WR_FEAT_PPID) ? " ppid" : "",
+	       (feats & WR_FEAT_TIME) ? " time" : "");
 }
 
 static int
@@ -153,25 +153,25 @@ cmd_wr(RCore *core, const char *input)
 	char name[16], onoff[8];
 	pid_t pid;
 	uint32_t feats, bit;
-	int fd, n, on;
+	int fd, nscan, on;
 
 	if (starts(input, "on") && (input[2] == '\0' || input[2] == ' ')) {
 		char tok[16];
-		const char *p;
+		const char *cur;
 		uint32_t mask = 0;
 
 		if (!need_dbg(core, &pid)) {
 			return true;
 		}
-		p = input + 2;
-		while (sscanf(p, " %15s%n", tok, &n) == 1) {
+		cur = input + 2;
+		while (sscanf(cur, " %15s%n", tok, &nscan) == 1) {
 			bit = feat_bit(tok);
 			if (!bit) {
 				say_err(core, "unknown feat %s\n", tok);
 				return true;
 			}
 			mask |= bit;
-			p += n;
+			cur += nscan;
 		}
 		if (!mask) {
 			say(core, "wrh on <feat...>   e.g. wrh on ptrace proc\n");
@@ -208,8 +208,8 @@ cmd_wr(RCore *core, const char *input)
 	if (starts(input, "feat")) {
 		memset(name, 0, sizeof(name));
 		memset(onoff, 0, sizeof(onoff));
-		n = sscanf(input, "feat %15s %7s", name, onoff);
-		if (n < 2) {
+		nscan = sscanf(input, "feat %15s %7s", name, onoff);
+		if (nscan < 2) {
 			say(core, "wrh feat <name> <on|off>\n");
 			return true;
 		}

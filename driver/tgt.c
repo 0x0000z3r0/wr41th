@@ -32,37 +32,37 @@ static DEFINE_MUTEX(lock);
 static DEFINE_SPINLOCK(bplock);
 
 static bool
-tgt_live(struct wr_tgt *t, pid_t pid)
+tgt_live(struct wr_tgt *tgt, pid_t pid)
 {
-	if (!t || !t->task) {
+	if (!tgt || !tgt->task) {
 		return false;
 	}
-	if (!pid_alive(t->task) || task_tgid_nr(t->task) != pid) {
+	if (!pid_alive(tgt->task) || task_tgid_nr(tgt->task) != pid) {
 		return false;
 	}
 	return true;
 }
 
 static void
-tgt_free(struct wr_tgt *t)
+tgt_free(struct wr_tgt *tgt)
 {
-	if (t->mm) {
-		mmput(t->mm);
+	if (tgt->mm) {
+		mmput(tgt->mm);
 	}
-	if (t->task) {
-		put_task_struct(t->task);
+	if (tgt->task) {
+		put_task_struct(tgt->task);
 	}
-	kfree(t);
+	kfree(tgt);
 }
 
 static void
-tgt_reclaim(struct wr_tgt *t)
+tgt_reclaim(struct wr_tgt *tgt)
 {
-	if (!t) {
+	if (!tgt) {
 		return;
 	}
 	synchronize_rcu();
-	tgt_free(t);
+	tgt_free(tgt);
 }
 
 static struct wr_tgt *
@@ -77,7 +77,7 @@ tgt_find(pid_t pid)
 int
 tgt_add(pid_t pid, u32 feats)
 {
-	struct wr_tgt *t, *old;
+	struct wr_tgt *tgt, *old;
 	struct task_struct *task;
 	struct mm_struct *mm;
 	int err;
@@ -86,11 +86,11 @@ tgt_add(pid_t pid, u32 feats)
 		return -EINVAL;
 	}
 
-	t = kzalloc(sizeof(*t), GFP_KERNEL);
-	if (!t) {
+	tgt = kzalloc(sizeof(*tgt), GFP_KERNEL);
+	if (!tgt) {
 		return -ENOMEM;
 	}
-	t->feats = feats;
+	tgt->feats = feats;
 
 	rcu_read_lock();
 	task = pid_task(find_vpid(pid), PIDTYPE_PID);
@@ -107,11 +107,11 @@ tgt_add(pid_t pid, u32 feats)
 		if (mm) {
 			mmput(mm);
 		}
-		kfree(t);
+		kfree(tgt);
 		return -ESRCH;
 	}
-	t->task = task;
-	t->mm = mm;
+	tgt->task = task;
+	tgt->mm = mm;
 
 	mutex_lock(&lock);
 	old = xa_load(&tgts, (unsigned long)pid);
@@ -123,12 +123,12 @@ tgt_add(pid_t pid, u32 feats)
 		if (old->task != task) {
 			drop_task = old->task;
 			old->task = task;
-			t->task = NULL;
+			tgt->task = NULL;
 		}
 		if (old->mm != mm) {
 			drop_mm = old->mm;
 			old->mm = mm;
-			t->mm = NULL;
+			tgt->mm = NULL;
 		}
 		mutex_unlock(&lock);
 		if (drop_task || drop_mm) {
@@ -141,14 +141,14 @@ tgt_add(pid_t pid, u32 feats)
 			}
 		}
 		wr_info("tgt upd pid=%d comm=%s feats=0x%x\n", pid, task->comm, feats);
-		tgt_free(t);
+		tgt_free(tgt);
 		return 0;
 	}
-	err = xa_err(xa_store(&tgts, (unsigned long)pid, t, GFP_KERNEL));
+	err = xa_err(xa_store(&tgts, (unsigned long)pid, tgt, GFP_KERNEL));
 	mutex_unlock(&lock);
 	if (err) {
 		wr_warn("tgt store pid=%d err=%d\n", pid, err);
-		tgt_free(t);
+		tgt_free(tgt);
 	} else {
 		wr_info("tgt add pid=%d comm=%s feats=0x%x\n", pid, task->comm, feats);
 	}
@@ -158,45 +158,45 @@ tgt_add(pid_t pid, u32 feats)
 int
 tgt_del(pid_t pid)
 {
-	struct wr_tgt *t;
+	struct wr_tgt *tgt;
 
 	if (pid == 0) {
 		return tgt_clear();
 	}
 	mutex_lock(&lock);
-	t = xa_erase(&tgts, (unsigned long)pid);
+	tgt = xa_erase(&tgts, (unsigned long)pid);
 	mutex_unlock(&lock);
-	if (!t) {
+	if (!tgt) {
 		return -ESRCH;
 	}
 	wr_info("tgt del pid=%d comm=%s feats=0x%x\n", pid,
-		t->task ? t->task->comm : "?", t->feats);
-	tgt_reclaim(t);
+		tgt->task ? tgt->task->comm : "?", tgt->feats);
+	tgt_reclaim(tgt);
 	return 0;
 }
 
 int
 tgt_clear(void)
 {
-	struct wr_tgt *dead = NULL, *t, *n;
+	struct wr_tgt *dead = NULL, *tgt, *next;
 	unsigned long idx;
 
 	mutex_lock(&lock);
-	xa_for_each(&tgts, idx, t)
+	xa_for_each(&tgts, idx, tgt)
 	{
 		wr_info("tgt drop pid=%lu comm=%s feats=0x%x\n", idx,
-			t->task ? t->task->comm : "?", t->feats);
+			tgt->task ? tgt->task->comm : "?", tgt->feats);
 		xa_erase(&tgts, idx);
-		t->dead = dead;
-		dead = t;
+		tgt->dead = dead;
+		dead = tgt;
 	}
 	mutex_unlock(&lock);
 	if (dead) {
 		synchronize_rcu();
 		while (dead) {
-			n = dead->dead;
+			next = dead->dead;
 			tgt_free(dead);
-			dead = n;
+			dead = next;
 		}
 	}
 	wr_info("tgt clear\n");
@@ -206,15 +206,15 @@ tgt_clear(void)
 int
 tgt_set(pid_t pid, u32 feats)
 {
-	struct wr_tgt *t;
+	struct wr_tgt *tgt;
 	int err = 0;
 
 	mutex_lock(&lock);
-	t = tgt_find(pid);
-	if (!t || !tgt_live(t, pid)) {
+	tgt = tgt_find(pid);
+	if (!tgt || !tgt_live(tgt, pid)) {
 		err = -ESRCH;
 	} else {
-		t->feats = feats;
+		tgt->feats = feats;
 	}
 	mutex_unlock(&lock);
 	if (!err) {
@@ -226,64 +226,64 @@ tgt_set(pid_t pid, u32 feats)
 int
 tgt_get(pid_t pid, u32 *feats)
 {
-	struct wr_tgt *t;
+	struct wr_tgt *tgt;
 	int err = 0;
 
 	mutex_lock(&lock);
-	t = tgt_find(pid);
-	if (!t || !tgt_live(t, pid)) {
+	tgt = tgt_find(pid);
+	if (!tgt || !tgt_live(tgt, pid)) {
 		err = -ESRCH;
 	} else if (feats) {
-		*feats = t->feats;
+		*feats = tgt->feats;
 	}
 	mutex_unlock(&lock);
 	return err;
 }
 
 int
-tgt_list(struct wr_req *ents, u32 max, u32 *n)
+tgt_list(struct wr_req *ents, u32 max, u32 *nents)
 {
 	unsigned long idx;
-	struct wr_tgt *t;
-	u32 i = 0;
+	struct wr_tgt *tgt;
+	u32 count = 0;
 
-	if (!n) {
+	if (!nents) {
 		return -EINVAL;
 	}
 	mutex_lock(&lock);
-	xa_for_each(&tgts, idx, t)
+	xa_for_each(&tgts, idx, tgt)
 	{
-		if (i >= max) {
+		if (count >= max) {
 			break;
 		}
 		if (ents) {
-			ents[i].pid = (__s32)idx;
-			ents[i].feats = t->feats;
+			ents[count].pid = (__s32)idx;
+			ents[count].feats = tgt->feats;
 		}
-		i++;
+		count++;
 	}
 	mutex_unlock(&lock);
-	*n = i;
-	wr_dbg("tgt list n=%u\n", i);
+	*nents = count;
+	wr_dbg("tgt list n=%u\n", count);
 	return 0;
 }
 
 bool
 tgt_has(pid_t pid, u32 feat)
 {
-	struct wr_tgt *t;
-	bool ok = false;
+	struct wr_tgt *tgt;
+	bool found = false;
 
 	if (pid <= 0) {
 		return false;
 	}
 	rcu_read_lock();
-	t = tgt_find(pid);
-	if (t && tgt_live(t, pid)) {
-		ok = (t->feats & feat) == feat;
+	tgt = tgt_find(pid);
+	if (tgt && tgt_live(tgt, pid)) {
+		found = (tgt->feats & feat) == feat;
 	}
 	rcu_read_unlock();
-	return ok;
+	return found;
 }
 
 bool
@@ -299,53 +299,53 @@ bool
 tgt_mm(struct mm_struct *mm, u32 feat, pid_t *pid)
 {
 	unsigned long idx;
-	struct wr_tgt *t;
-	bool ok = false;
+	struct wr_tgt *tgt;
+	bool found = false;
 
 	if (!mm) {
 		return false;
 	}
 	rcu_read_lock();
-	xa_for_each(&tgts, idx, t)
+	xa_for_each(&tgts, idx, tgt)
 	{
-		if (t->mm == mm && tgt_live(t, (pid_t)idx) && (t->feats & feat) == feat) {
+		if (tgt->mm == mm && tgt_live(tgt, (pid_t)idx) && (tgt->feats & feat) == feat) {
 			if (pid) {
 				*pid = (pid_t)idx;
 			}
-			ok = true;
+			found = true;
 			break;
 		}
 	}
 	rcu_read_unlock();
-	return ok;
+	return found;
 }
 
 void
 tgt_bp_set(pid_t pid, unsigned long addr, u8 orig)
 {
-	struct wr_tgt *t;
-	int i, slot = -1;
+	struct wr_tgt *tgt;
+	int slot = -1, cur;
 
 	rcu_read_lock();
-	t = tgt_find(pid);
-	if (!t) {
+	tgt = tgt_find(pid);
+	if (!tgt) {
 		goto out;
 	}
 	spin_lock(&bplock);
-	for (i = 0; i < WR_BP_MAX; i++) {
-		if (t->bps[i].used && t->bps[i].addr == addr) {
+	for (cur = 0; cur < WR_BP_MAX; cur++) {
+		if (tgt->bps[cur].used && tgt->bps[cur].addr == addr) {
 			spin_unlock(&bplock);
 			rcu_read_unlock();
 			return;
 		}
-		if (!t->bps[i].used && slot < 0) {
-			slot = i;
+		if (!tgt->bps[cur].used && slot < 0) {
+			slot = cur;
 		}
 	}
 	if (slot >= 0) {
-		t->bps[slot].addr = addr;
-		t->bps[slot].orig = orig;
-		t->bps[slot].used = 1;
+		tgt->bps[slot].addr = addr;
+		tgt->bps[slot].orig = orig;
+		tgt->bps[slot].used = 1;
 		spin_unlock(&bplock);
 		wr_info("bp set pid=%d addr=0x%lx orig=0x%02x slot=%d\n",
 			pid, addr, orig, slot);
@@ -361,29 +361,29 @@ out:
 bool
 tgt_bp_get(pid_t pid, unsigned long addr, u8 *orig)
 {
-	struct wr_tgt *t;
-	int i;
-	bool ok = false;
+	struct wr_tgt *tgt;
+	int cur;
+	bool found = false;
 
 	rcu_read_lock();
-	t = tgt_find(pid);
-	if (!t) {
+	tgt = tgt_find(pid);
+	if (!tgt) {
 		goto out;
 	}
 	spin_lock(&bplock);
-	for (i = 0; i < WR_BP_MAX; i++) {
-		if (t->bps[i].used && t->bps[i].addr == addr) {
+	for (cur = 0; cur < WR_BP_MAX; cur++) {
+		if (tgt->bps[cur].used && tgt->bps[cur].addr == addr) {
 			if (orig) {
-				*orig = t->bps[i].orig;
+				*orig = tgt->bps[cur].orig;
 			}
-			ok = true;
+			found = true;
 			break;
 		}
 	}
 	spin_unlock(&bplock);
 out:
 	rcu_read_unlock();
-	return ok;
+	return found;
 }
 
 int

@@ -21,8 +21,8 @@ main(void)
 		return fail("process_vm_readv");
 	}
 
-	for (size_t i = 0; i < sizeof(buf); i++) {
-		if (buf[i] == 0xcc) {
+	for (size_t off = 0; off < sizeof(buf); off++) {
+		if (buf[off] == 0xcc) {
 			return bad("int3");
 		}
 	}

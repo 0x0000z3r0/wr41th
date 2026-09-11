@@ -30,9 +30,9 @@ static u8
 peek_byte(struct mm_struct *mm, unsigned long addr)
 {
 	struct page *page;
-	void *k;
-	u8 b = 0;
-	long n;
+	void *kaddr;
+	u8 byte = 0;
+	long nread;
 	int *busy = this_cpu_ptr(&wr_busy);
 
 	if (*busy || in_atomic() || irqs_disabled()) {
@@ -40,100 +40,103 @@ peek_byte(struct mm_struct *mm, unsigned long addr)
 	}
 	(*busy)++;
 	mmap_read_lock(mm);
-	n = get_user_pages_remote(mm, addr, 1, FOLL_FORCE, &page, NULL);
-	if (n > 0) {
-		k = kmap_local_page(page);
-		b = *((u8 *)k + offset_in_page(addr));
-		kunmap_local(k);
+	nread = get_user_pages_remote(mm, addr, 1, FOLL_FORCE, &page, NULL);
+	if (nread > 0) {
+		kaddr = kmap_local_page(page);
+		byte = *((u8 *)kaddr + offset_in_page(addr));
+		kunmap_local(kaddr);
 		put_page(page);
 	}
 	mmap_read_unlock(mm);
 	(*busy)--;
-	return b;
+	return byte;
 }
 
 static void
 note_write(struct mm_struct *mm, unsigned long addr, const u8 *buf, int len)
 {
 	pid_t pid;
-	int i;
+	int off;
 
 	if (!tgt_mm(mm, WR_FEAT_BRK, &pid)) {
 		return;
 	}
-	for (i = 0; i < len; i++) {
-		if (buf[i] != WR_INT3) {
+	for (off = 0; off < len; off++) {
+		if (buf[off] != WR_INT3) {
 			continue;
 		}
-		if (tgt_bp_get(pid, addr + i, NULL)) {
+		if (tgt_bp_get(pid, addr + off, NULL)) {
 			continue;
 		}
 		if (in_atomic() || irqs_disabled()) {
 			continue;
 		}
-		tgt_bp_set(pid, addr + i, peek_byte(mm, addr + i));
+		tgt_bp_set(pid, addr + off, peek_byte(mm, addr + off));
 	}
 }
 
 static void
-hide_read(u8 *p, int len, unsigned long addr, pid_t pid)
+hide_read(u8 *buf, int len, unsigned long addr, pid_t pid)
 {
 	u8 orig;
-	int i;
+	int off;
 
-	for (i = 0; i < len; i++) {
-		if (p[i] != WR_INT3) {
+	for (off = 0; off < len; off++) {
+		if (buf[off] != WR_INT3) {
 			continue;
 		}
-		if (tgt_bp_get(pid, addr + i, &orig)) {
+		if (tgt_bp_get(pid, addr + off, &orig)) {
 			wr_dbg("bp hide pid=%d addr=0x%lx orig=0x%02x\n",
-			       pid, addr + i, orig);
-			p[i] = orig;
+			       pid, addr + off, orig);
+			buf[off] = orig;
 		}
 	}
 }
 
 static void
-scan_write(struct vm_stash *s)
+scan_write(struct vm_stash *stash)
 {
 	u8 tmp[WR_CHUNK];
-	int off = 0, n;
+	int off = 0, chunk;
 
-	while (off < s->len) {
-		n = s->len - off;
-		if (n > WR_CHUNK) {
-			n = WR_CHUNK;
+	while (off < stash->len) {
+		chunk = stash->len - off;
+		if (chunk > WR_CHUNK) {
+			chunk = WR_CHUNK;
 		}
-		memcpy(tmp, (u8 *)s->buf + off, n);
-		note_write(s->mm, s->addr + off, tmp, n);
-		off += n;
+		memcpy(tmp, (u8 *)stash->buf + off, chunk);
+		note_write(stash->mm, stash->addr + off, tmp, chunk);
+		off += chunk;
 	}
 }
 
 static void
-fill_stash(struct vm_stash *s, struct mm_struct *mm, unsigned long addr, void *buf, int len, unsigned int flags)
+fill_stash(struct vm_stash *stash, struct mm_struct *mm, unsigned long addr, void *buf, int len, unsigned int flags)
 {
-	s->mm = mm;
-	s->addr = addr;
-	s->buf = buf;
-	s->len = len;
-	s->flags = flags;
-	s->hide = 0;
-	s->pid = 0;
+	stash->mm = mm;
+	stash->addr = addr;
+	stash->buf = buf;
+	stash->len = len;
+	stash->flags = flags;
+	stash->hide = 0;
+	stash->pid = 0;
 
 	if (*this_cpu_ptr(&wr_busy) || !mm || len <= 0) {
 		return;
 	}
 	if (flags & FOLL_WRITE) {
-		scan_write(s);
-	} else if (tgt_task(current, WR_FEAT_BRK) && tgt_mm(mm, WR_FEAT_BRK, &s->pid)) {
-		s->hide = 1;
+		scan_write(stash);
+	} else if (tgt_task(current, WR_FEAT_BRK) && tgt_mm(mm, WR_FEAT_BRK, &stash->pid)) {
+		stash->hide = 1;
 	}
 }
 
 static WR_FENTRY
-vm_ent(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs, void *data)
+vm_ent(struct fprobe *probe, unsigned long ip, unsigned long rip, WR_FREGS *regs, void *data)
 {
+	(void)probe;
+	(void)ip;
+	(void)rip;
 	fill_stash(data,
 		   (struct mm_struct *)hook_arg(regs, 0),
 		   hook_arg(regs, 1),
@@ -146,11 +149,14 @@ vm_ent(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs, v
 }
 
 static WR_FENTRY
-ptvm_ent(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs, void *data)
+ptvm_ent(struct fprobe *probe, unsigned long ip, unsigned long rip, WR_FREGS *regs, void *data)
 {
 	struct task_struct *task = (struct task_struct *)hook_arg(regs, 0);
 	struct mm_struct *mm = task ? task->mm : NULL;
 
+	(void)probe;
+	(void)ip;
+	(void)rip;
 	fill_stash(data, mm,
 		   hook_arg(regs, 1),
 		   (void *)hook_arg(regs, 2),
@@ -162,13 +168,16 @@ ptvm_ent(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs,
 }
 
 static void
-vm_ex(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs, void *data)
+vm_ex(struct fprobe *probe, unsigned long ip, unsigned long rip, WR_FREGS *regs, void *data)
 {
-	struct vm_stash *s = data;
+	struct vm_stash *stash = data;
 	u8 tmp[WR_CHUNK];
-	int got, off, n;
+	int got, off, chunk;
 
-	if (!s->hide || s->pid <= 0) {
+	(void)probe;
+	(void)ip;
+	(void)rip;
+	if (!stash->hide || stash->pid <= 0) {
 		return;
 	}
 	got = (int)hook_ret(regs);
@@ -177,14 +186,14 @@ vm_ex(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs, vo
 	}
 	off = 0;
 	while (off < got) {
-		n = got - off;
-		if (n > WR_CHUNK) {
-			n = WR_CHUNK;
+		chunk = got - off;
+		if (chunk > WR_CHUNK) {
+			chunk = WR_CHUNK;
 		}
-		memcpy(tmp, (u8 *)s->buf + off, n);
-		hide_read(tmp, n, s->addr + off, s->pid);
-		memcpy((u8 *)s->buf + off, tmp, n);
-		off += n;
+		memcpy(tmp, (u8 *)stash->buf + off, chunk);
+		hide_read(tmp, chunk, stash->addr + off, stash->pid);
+		memcpy((u8 *)stash->buf + off, tmp, chunk);
+		off += chunk;
 	}
 }
 

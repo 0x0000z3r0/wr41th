@@ -8,52 +8,55 @@
 #define WR_TPID "TracerPid:"
 
 struct proc_stash {
-	struct seq_file *m;
+	struct seq_file *seq;
 };
 
 static void
-proc_fix(struct seq_file *m)
+proc_fix(struct seq_file *seq)
 {
-	char *p, *e, *nl;
+	char *pos, *end, *nl;
 
-	if (!m || !m->buf || !m->count || m->count > m->size) {
+	if (!seq || !seq->buf || !seq->count || seq->count > seq->size) {
 		return;
 	}
-	if (seq_has_overflowed(m)) {
+	if (seq_has_overflowed(seq)) {
 		return;
 	}
-	p = strnstr(m->buf, WR_TPID, m->count);
-	if (!p) {
+	pos = strnstr(seq->buf, WR_TPID, seq->count);
+	if (!pos) {
 		return;
 	}
-	p += sizeof(WR_TPID) - 1;
-	e = m->buf + m->count;
-	while (p < e && (*p == ' ' || *p == '\t')) {
-		p++;
+	pos += sizeof(WR_TPID) - 1;
+	end = seq->buf + seq->count;
+	while (pos < end && (*pos == ' ' || *pos == '\t')) {
+		pos++;
 	}
-	nl = p;
-	while (nl < e && *nl != '\n') {
+	nl = pos;
+	while (nl < end && *nl != '\n') {
 		nl++;
 	}
-	if (nl == p) {
+	if (nl == pos) {
 		return;
 	}
-	*p++ = '0';
-	while (p < nl) {
-		*p++ = ' ';
+	*pos++ = '0';
+	while (pos < nl) {
+		*pos++ = ' ';
 	}
 	wr_dbg("proc hide TracerPid\n");
 }
 
 static WR_FENTRY
-proc_ent(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs, void *data)
+proc_ent(struct fprobe *probe, unsigned long ip, unsigned long rip, WR_FREGS *regs, void *data)
 {
-	struct proc_stash *s = data;
+	struct proc_stash *stash = data;
 	struct task_struct *task = (struct task_struct *)hook_arg(regs, 3);
 
-	s->m = NULL;
+	(void)probe;
+	(void)ip;
+	(void)rip;
+	stash->seq = NULL;
 	if (task && (tgt_task(task, WR_FEAT_PROC) || tgt_task(current, WR_FEAT_PROC))) {
-		s->m = (struct seq_file *)hook_arg(regs, 0);
+		stash->seq = (struct seq_file *)hook_arg(regs, 0);
 	}
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
 	return 0;
@@ -61,12 +64,16 @@ proc_ent(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs,
 }
 
 static void
-proc_ex(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs, void *data)
+proc_ex(struct fprobe *probe, unsigned long ip, unsigned long rip, WR_FREGS *regs, void *data)
 {
-	struct proc_stash *s = data;
+	struct proc_stash *stash = data;
 
-	if (s->m) {
-		proc_fix(s->m);
+	(void)probe;
+	(void)ip;
+	(void)rip;
+	(void)regs;
+	if (stash->seq) {
+		proc_fix(stash->seq);
 	}
 }
 

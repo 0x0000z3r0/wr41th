@@ -9,13 +9,16 @@ struct pt_stash {
 };
 
 static WR_FENTRY
-pt_ent(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs, void *data)
+pt_ent(struct fprobe *probe, unsigned long ip, unsigned long rip, WR_FREGS *regs, void *data)
 {
 	struct pt_regs *uregs;
 	long req, tid;
-	struct pt_stash *s = data;
+	struct pt_stash *stash = data;
 
-	s->fake = 0;
+	(void)probe;
+	(void)ip;
+	(void)rip;
+	stash->fake = 0;
 	if (!tgt_task(current, WR_FEAT_PTRACE)) {
 		goto done;
 	}
@@ -34,12 +37,12 @@ pt_ent(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs, v
 #endif
 
 	if (req == PTRACE_TRACEME) {
-		s->fake = 1;
+		stash->fake = 1;
 	} else if ((req == PTRACE_ATTACH || req == PTRACE_SEIZE) &&
 		   (tid == task_tgid_nr(current) || tid == task_pid_nr(current))) {
-		s->fake = 1;
+		stash->fake = 1;
 	}
-	if (s->fake) {
+	if (stash->fake) {
 		wr_dbg("ptrace hide pid=%d req=%ld tid=%ld\n",
 		       task_tgid_nr(current), req, tid);
 	}
@@ -51,11 +54,14 @@ done:
 }
 
 static void
-pt_ex(struct fprobe *fp, unsigned long ip, unsigned long rip, WR_FREGS *regs, void *data)
+pt_ex(struct fprobe *probe, unsigned long ip, unsigned long rip, WR_FREGS *regs, void *data)
 {
-	struct pt_stash *s = data;
+	struct pt_stash *stash = data;
 
-	if (!s || !s->fake) {
+	(void)probe;
+	(void)ip;
+	(void)rip;
+	if (!stash || !stash->fake) {
 		return;
 	}
 	if ((long)hook_ret(regs) == -EPERM) {
