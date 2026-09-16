@@ -1,6 +1,7 @@
 DEST ?= ../build/demo
 CC ?= gcc
 CFLAGS ?= -O0 -Wall -Wextra
+LIBS ?= -ldl
 SRCS := $(wildcard *.c)
 BINS := $(patsubst %.c,$(DEST)/%,$(SRCS))
 
@@ -10,4 +11,4 @@ all: $(BINS)
 
 $(DEST)/%: %.c
 	mkdir -p $(DEST)
-	$(CC) $(CFLAGS) -o $@ $<
+	$(CC) $(CFLAGS) $(LIBS) -o $@ $<
